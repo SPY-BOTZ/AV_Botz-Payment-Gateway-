@@ -17,7 +17,7 @@ TELEGRAM_BOT_TOKEN = "8432557033:AAGts8uHMdhRVaNFTHX3_tp2VYUEZQGEr78"
 LOG_CHANNEL_ID = "-1002580860502" 
 ADMIN_UPI_ID = "BHARATPE.9Q0Q0K0Z8Q466572@unitype" 
 ADMIN_COMMISSION = 1.0
-WEB_URL = "https://usual-catshark-moveshub-450ea334.koyeb.app/"  # Apni Koyeb ki URL yahan daalein
+WEB_URL = "https://usual-catshark-moveshub-450ea334.koyeb.app/"
 # -------------------------------------------------
 
 client = MongoClient(MONGO_URI)
@@ -88,7 +88,7 @@ def signup():
         shop_name = request.form.get("shop_name")
         email = request.form.get("email")
         upi_id = request.form.get("upi_id")
-        tg_id = request.form.get("tg_id", "")  # Optional Telegram ID linking
+        tg_id = request.form.get("tg_id", "")
         
         if users_collection.find_one({"shop_name": shop_name}):
             return "<script>alert('Shop name already taken!'); window.location='/signup';</script>"
@@ -99,13 +99,15 @@ def signup():
             "shop_name": shop_name, "email": email, "upi_id": upi_id, "telegram_id": tg_id, "api_key": api_key, "balance": 0.0
         })
         
+        # Telegram Channel par notification bhejne ka code
         try:
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
                 "chat_id": LOG_CHANNEL_ID,
-                "text": f"<b>🚀 New Web Registration!</b>\n🏪 Shop: {shop_name}\n📧 Email: {email}\n💳 UPI: <code>{upi_id}</code>\n🔑 Key: <code>{api_key}</code>",
+                "text": f"<b>🚀 New Web Registration!</b>\n🏪 Shop: {shop_name}\n📧 Email/Phone: {email}\n💳 UPI: <code>{upi_id}</code>\n🤖 Telegram ID: {tg_id}\n🔑 Key: <code>{api_key}</code>",
                 "parse_mode": "HTML"
             })
-        except: pass
+        except Exception as e:
+            print("Telegram Error:", e)
         
         session["shop_name"] = shop_name
         return redirect(url_for("dashboard"))
@@ -249,7 +251,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text(f"💳 **YOUR WALLET BALANCE**\n\nAvailable Balance: ₹{bal}", parse_mode="Markdown")
     elif query.data == "profile":
         if shop:
-            await query.message.edit_text(f"👤 **MERCHANT PROFILE**\n\nName: {shop['shop_name']}\nEmail: {shop['email']}\nMobile: {shop['upi_id']}", parse_mode="Markdown")
+            await query.message.edit_text(f"👤 **MERCHANT PROFILE**\n\nName: {shop['shop_name']}\nEmail: {shop['email']}\nUPI: {shop['upi_id']}", parse_mode="Markdown")
         else:
             await query.message.edit_text("❌ No account found linked to your Telegram.")
     elif query.data == "withdraw":
@@ -267,10 +269,9 @@ def run_telegram_bot():
     app_bot.run_polling()
 
 if __name__ == "__main__":
-    # Background thread mein Telegram bot chalega aur main thread mein Flask web app
     t = threading.Thread(target=run_telegram_bot)
     t.daemon = True
     t.start()
     
     app.run(host="0.0.0.0", port=5000)
-    
+                
