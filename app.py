@@ -15,9 +15,9 @@ app.secret_key = "spay_super_secret_key"
 MONGO_URI = "mongodb+srv://wajsarif461_db_user:TwacJh76mwpHHpjpw@cluster0.biueyst.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 TELEGRAM_BOT_TOKEN = "8432557033:AAGts8uHMdhRVaNFTHX3_tp2VYUEZQGEr78"
 LOG_CHANNEL_ID = "-1002580860502" 
-ADMIN_UPI_ID = "your_admin_upi@fam" 
+ADMIN_UPI_ID = "BHARATPE.9Q0Q0K0Z8Q466572@unitype" 
 ADMIN_COMMISSION = 1.0
-WEB_URL = "https://your-app-name.koyeb.app"  # Apni Koyeb ki URL yahan daalein
+WEB_URL = "https://usual-catshark-moveshub-450ea334.koyeb.app/"  # Apni Koyeb ki URL yahan daalein
 # -------------------------------------------------
 
 client = MongoClient(MONGO_URI)
