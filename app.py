@@ -3,6 +3,7 @@ import threading
 import uuid
 import hashlib
 import requests
+import asyncio
 from flask import Flask, request, jsonify, render_template_string, session, redirect, url_for
 from pymongo import MongoClient
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -26,7 +27,7 @@ users_collection = db["users"]
 orders_collection = db["orders"]
 withdrawals_collection = db["withdrawals"]
 
-# --- WEBSITE HTML TEMPLATE ---
+# --- DASHBOARD LAYOUT TEMPLATE ---
 DASHBOARD_LAYOUT = """
 <!DOCTYPE html>
 <html>
@@ -37,11 +38,10 @@ DASHBOARD_LAYOUT = """
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f8f9fa; margin: 0; padding: 0; color: #333; }
         .sidebar { width: 250px; background: #fff; position: fixed; height: 100%; border-right: 1px solid #dee2e6; padding-top: 20px; }
         .sidebar a { padding: 12px 20px; display: block; color: #333; text-decoration: none; font-size: 15px; font-weight: 500; border-left: 3px solid transparent; }
-        .sidebar a:hover, .sidebar a.active { background: #f1f3f5; border-left-color: #f39c12; color: #f39c12; }
+        .sidebar a:hover, .sidebar a.active { background: #f1f3f5; border-left-color: #d35400; color: #d35400; }
         .main-content { margin-left: 250px; padding: 30px; }
         .header { background: #fff; padding: 15px 30px; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; margin-left: 250px; }
         .card { background: #fff; padding: 25px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        .btn { background: #f39c12; color: white; padding: 10px 20px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; text-decoration: none; display: inline-block; }
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
         .stat-box { background: #fff; padding: 20px; border-radius: 10px; border: 1px solid #eaeaea; }
         input, select { width: 100%; padding: 10px; margin: 8px 0 15px 0; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
@@ -50,7 +50,7 @@ DASHBOARD_LAYOUT = """
 </head>
 <body>
     <div class="sidebar">
-        <div style="padding: 0 20px; font-size: 20px; font-weight: bold; color: #f39c12; margin-bottom: 20px;">💳 S-Pay Gateway</div>
+        <div style="padding: 0 20px; font-size: 20px; font-weight: bold; color: #d35400; margin-bottom: 20px;">💳 S-Pay Gateway</div>
         <a href="/dashboard">📊 Overview</a>
         <a href="/dashboard/apikey">🔑 API Key</a>
         <a href="/dashboard/orders">📦 Recent Orders</a>
@@ -69,19 +69,124 @@ DASHBOARD_LAYOUT = """
 </html>
 """
 
+# --- PROFESSIONAL LANDING PAGE (FAM-PAY STYLE) ---
 @app.route("/")
 def home():
     return render_template_string("""
+    <!DOCTYPE html>
     <html>
-    <head><title>S-Pay Gateway</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-    <body style="font-family: Arial; text-align: center; padding: 50px; background: #f8f9fa;">
-        <h1>Accept UPI payments, straight to your own account.</h1>
-        <br><a href="/signup" style="background: #f39c12; color: white; padding: 12px 25px; text-decoration: none; border-radius: 6px; font-weight: bold;">Create Free Account</a>
-        <a href="/login" style="background: #fff; color: #333; border: 1px solid #ccc; padding: 12px 25px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-left: 10px;">Login</a>
+    <head>
+        <title>S-Pay Gateway - Multi-Merchant UPI Payment API</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #fdfbf7; margin: 0; padding: 0; color: #222; }
+            header { display: flex; justify-content: space-between; align-items: center; padding: 20px 8%; border-bottom: 1px solid #eee; background: #fff; position: sticky; top: 0; z-index: 100; }
+            .logo { font-weight: bold; font-size: 20px; color: #111; display: flex; align-items: center; gap: 8px; }
+            .logo span { background: #d35400; color: white; padding: 4px 8px; border-radius: 4px; }
+            .nav-btns a { margin-left: 15px; text-decoration: none; font-weight: 600; font-size: 14px; }
+            .btn-login { color: #333; padding: 8px 16px; }
+            .btn-getstarted { background: #d35400; color: white; padding: 8px 16px; border-radius: 6px; }
+            
+            .hero { text-align: center; padding: 80px 20px 40px 20px; max-width: 800px; margin: 0 auto; }
+            .subtitle { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #888; font-weight: 700; margin-bottom: 15px; }
+            h1 { font-size: 42px; line-height: 1.2; font-weight: 800; color: #111; margin-bottom: 20px; }
+            p.desc { font-size: 16px; color: #555; line-height: 1.6; margin-bottom: 30px; }
+            
+            .badges { display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; margin-bottom: 40px; }
+            .badge { background: #fff; border: 1px solid #e5e5e5; padding: 6px 14px; border-radius: 20px; font-size: 13px; color: #444; font-weight: 500; }
+            
+            .cta-group { margin-bottom: 60px; }
+            .btn-main { background: #d35400; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block; margin-right: 10px; }
+            .btn-sec { background: #fff; color: #333; border: 1px solid #ccc; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 15px; display: inline-block; }
+            
+            .section-title { text-align: center; font-size: 24px; font-weight: 800; margin-bottom: 10px; }
+            .section-sub { text-align: center; color: #666; font-size: 14px; margin-bottom: 40px; }
+            
+            .steps-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; padding: 0 8% 80px 8%; max-width: 1100px; margin: 0 auto; }
+            .step-card { background: #fff; border: 1px solid #eaeaea; padding: 30px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.02); }
+            .step-num { font-size: 13px; font-weight: bold; color: #d35400; background: #fae5d3; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-bottom: 15px; }
+            .step-card h3 { font-size: 18px; margin-bottom: 10px; color: #111; }
+            .step-card p { font-size: 14px; color: #666; line-height: 1.5; }
+            
+            .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; padding: 0 8% 80px 8%; max-width: 1100px; margin: 0 auto; }
+            .feature-box { background: #fff; border: 1px solid #eaeaea; padding: 20px; border-radius: 10px; font-size: 14px; font-weight: 600; color: #333; display: flex; align-items: center; gap: 12px; }
+            
+            .footer-banner { background: #fff; border: 1px solid #eaeaea; border-radius: 16px; margin: 0 8% 80px 8%; padding: 50px 20px; text-align: center; max-width: 1000px; margin-left: auto; margin-right: auto; }
+            footer { text-align: center; padding: 20px; font-size: 12px; color: #777; border-top: 1px solid #eee; background: #fff; }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div class="logo"><span>💳</span> S-Pay Gateway</div>
+            <div class="nav-btns">
+                <a href="/login" class="btn-login">Login</a>
+                <a href="/signup" class="btn-getstarted">Get Started</a>
+            </div>
+        </header>
+
+        <div class="hero">
+            <div class="subtitle">MULTI-MERCHANT UPI PAYMENT API</div>
+            <h1>Accept UPI payments, straight to your own account.</h1>
+            <p class="desc">Connect your own UPI ID once. Every payment lands directly with you and gets marked "paid" automatically — no manual checking, no middleman holding your money.</p>
+            
+            <div class="badges">
+                <div class="badge">✔️ Direct to your UPI ID</div>
+                <div class="badge">✔️ Automatic verification</div>
+                <div class="badge">✔️ No KYC, no signup fee</div>
+            </div>
+            
+            <div class="cta-group">
+                <a href="/signup" class="btn-main">Create free account</a>
+                <a href="/login" class="btn-sec">Login</a>
+            </div>
+        </div>
+
+        <div class="section-title">How it works</div>
+        <div class="section-sub">Three steps — set up once, runs on its own after that.</div>
+        
+        <div class="steps-container">
+            <div class="step-card">
+                <div class="step-num">01</div>
+                <h3>Generate a QR</h3>
+                <p>Call one API endpoint with an amount, get back a UPI QR code for your customer to scan.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-num">02</div>
+                <h3>Customer pays you directly</h3>
+                <p>Any UPI app works — GPay, PhonePe, Paytm, BHIM. Money reaches your own UPI ID instantly.</p>
+            </div>
+            <div class="step-card">
+                <div class="step-num">03</div>
+                <h3>Order confirmed automatically</h3>
+                <p>Within moments the order flips to "paid" on its own — you never have to manually confirm a payment.</p>
+            </div>
+        </div>
+
+        <div class="section-title">Why merchants trust this</div>
+        <div class="section-sub">Built so you're always the one in control of your own money.</div>
+
+        <div class="features-grid">
+            <div class="feature-box">🛡️ Money never passes through us</div>
+            <div class="feature-box">⚡ Isolated per merchant</div>
+            <div class="feature-box">🔒 Full control, anytime</div>
+            <div class="feature-box">⏳ Orders auto-expire</div>
+        </div>
+
+        <div class="footer-banner">
+            <h2>Your API key and full docs live in your dashboard</h2>
+            <p style="color: #666; font-size: 14px; margin-bottom: 25px;">Register free, add your UPI ID, and every endpoint — with your real key already filled in — is one click away.</p>
+            <a href="/signup" class="btn-main">Create free account</a>
+            <a href="/login" class="btn-sec">I already have an account</a>
+        </div>
+
+        <footer>
+            Self-hosted • direct-to-merchant UPI collection • no subscription, no middleman.
+        </footer>
     </body>
     </html>
     """)
 
+# --- SIGNUP PAGE ROUTE ---
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
@@ -99,7 +204,6 @@ def signup():
             "shop_name": shop_name, "email": email, "upi_id": upi_id, "telegram_id": tg_id, "api_key": api_key, "balance": 0.0
         })
         
-        # Telegram Channel par notification bhejne ka code
         try:
             requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
                 "chat_id": LOG_CHANNEL_ID,
@@ -113,24 +217,34 @@ def signup():
         return redirect(url_for("dashboard"))
         
     return render_template_string("""
+    <!DOCTYPE html>
     <html>
-    <head><title>Signup - S-Pay</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-    <body style="font-family: Arial; background: #f8f9fa; display: flex; justify-content: center; align-items: center; height: 100vh; margin:0;">
-        <div style="background: white; padding: 30px; border-radius: 12px; width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-            <h2>Create Free Account</h2>
+    <head><title>Signup - S-Pay Gateway</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="font-family: Arial; background: #fdfbf7; display: flex; justify-content: center; align-items: center; height: 100vh; margin:0;">
+        <div style="background: white; padding: 35px; border-radius: 12px; width: 380px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eaeaea;">
+            <h2 style="margin-top:0; color:#111;">Create Free Account</h2>
             <form method="POST">
-                <label>Shop Name</label><input type="text" name="shop_name" required>
-                <label>Email / Phone</label><input type="text" name="email" required>
-                <label>Your UPI ID (For Withdrawal)</label><input type="text" name="upi_id" required>
-                <label>Telegram ID (Optional for Bot Sync)</label><input type="text" name="tg_id">
-                <button type="submit" style="background: #f39c12; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer;">Register</button>
+                <label style="font-size:13px; font-weight:600; color:#444;">Shop Name</label>
+                <input type="text" name="shop_name" required style="width:100%; padding:10px; margin:6px 0 14px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+                
+                <label style="font-size:13px; font-weight:600; color:#444;">Email / Phone</label>
+                <input type="text" name="email" required style="width:100%; padding:10px; margin:6px 0 14px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+                
+                <label style="font-size:13px; font-weight:600; color:#444;">Your UPI ID (For Withdrawal)</label>
+                <input type="text" name="upi_id" required style="width:100%; padding:10px; margin:6px 0 14px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+                
+                <label style="font-size:13px; font-weight:600; color:#444;">Telegram ID (Optional for Bot Sync)</label>
+                <input type="text" name="tg_id" style="width:100%; padding:10px; margin:6px 0 20px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+                
+                <button type="submit" style="background: #d35400; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 15px;">Register</button>
             </form>
-            <p style="text-align:center; margin-top:15px;"><a href="/login">Already have an account? Login</a></p>
+            <p style="text-align:center; margin-top:15px; font-size:13px;"><a href="/login" style="color:#d35400; text-decoration:none; font-weight:600;">Already have an account? Login</a></p>
         </div>
     </body>
     </html>
     """)
 
+# --- LOGIN PAGE ROUTE ---
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -141,15 +255,19 @@ def login():
         return "<script>alert('Shop not found!'); window.location='/login';</script>"
         
     return render_template_string("""
+    <!DOCTYPE html>
     <html>
-    <head><title>Login - S-Pay</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
-    <body style="font-family: Arial; background: #f8f9fa; display: flex; justify-content: center; align-items: center; height: 100vh; margin:0;">
-        <div style="background: white; padding: 30px; border-radius: 12px; width: 350px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-            <h2>Welcome Back</h2>
+    <head><title>Login - S-Pay Gateway</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="font-family: Arial; background: #fdfbf7; display: flex; justify-content: center; align-items: center; height: 100vh; margin:0;">
+        <div style="background: white; padding: 35px; border-radius: 12px; width: 380px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eaeaea;">
+            <h2 style="margin-top:0; color:#111;">Welcome Back</h2>
             <form method="POST">
-                <label>Shop / Username</label><input type="text" name="shop_name" required>
-                <button type="submit" style="background: #f39c12; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer;">Login</button>
+                <label style="font-size:13px; font-weight:600; color:#444;">Shop / Username</label>
+                <input type="text" name="shop_name" required style="width:100%; padding:10px; margin:6px 0 20px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+                
+                <button type="submit" style="background: #d35400; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 15px;">Login</button>
             </form>
+            <p style="text-align:center; margin-top:15px; font-size:13px;"><a href="/signup" style="color:#d35400; text-decoration:none; font-weight:600;">Create New Account</a></p>
         </div>
     </body>
     </html>
