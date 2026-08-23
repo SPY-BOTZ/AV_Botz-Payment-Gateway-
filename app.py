@@ -19,21 +19,95 @@ users_collection = db["users"]
 orders_collection = db["orders"]
 withdrawals_collection = db["withdrawals"]
 
-# 1. Home / Dashboard Page
+# 1. Home / Dashboard Page (With Withdraw Option)
 @app.route("/")
 def home():
     return render_template_string("""
     <html>
-    <head><title>FamPay Gateway Panel</title></head>
-    <body style="font-family: Arial; text-align: center; padding: 50px; background: #f4f4f9;">
-        <h2>🚀 FamPay Custom Gateway</h2>
-        <p>Aapka gateway server successfully run ho raha hai!</p>
-        <p><a href="/admin?key=admin123">🔑 Go to Admin Panel</a></p>
+    <head><title>FamPay Gateway Panel</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="font-family: Arial; text-align: center; padding: 30px; background: #f4f4f9;">
+        <div style="max-width: 450px; margin: auto; background: white; padding: 25px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1);">
+            <h2>🚀 FamPay Custom Gateway</h2>
+            <p>Aapka gateway server successfully run ho raha hai!</p>
+            <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
+            <h3>💸 Request Withdrawal</h3>
+            <form action="/api/withdraw" method="POST" style="text-align: left;">
+                <label style="font-size: 14px; font-weight: bold;">API Key / Shop Token:</label><br>
+                <input type="text" name="api_key" placeholder="FAM_..." required style="width: 100%; padding: 8px; margin: 5px 0 15px 0; border: 1px solid #ccc; border-radius: 4px;"><br>
+                
+                <label style="font-size: 14px; font-weight: bold;">Withdrawal Amount (Min ₹10):</label><br>
+                <input type="number" name="amount" placeholder="10" min="10" required style="width: 100%; padding: 8px; margin: 5px 0 15px 0; border: 1px solid #ccc; border-radius: 4px;"><br>
+                
+                <label style="font-size: 14px; font-weight: bold;">Your UPI ID:</label><br>
+                <input type="text" name="upi_id" placeholder="yourname@okhdfcbank" required style="width: 100%; padding: 8px; margin: 5px 0 10px 0; border: 1px solid #ccc; border-radius: 4px;"><br>
+                
+                <p style="font-size: 12px; color: #d9534f; margin-bottom: 15px;">⚠️ <b>Note:</b> Maximum/Minimum withdrawal limit is ₹10. Payment will be cleared within <b>10-12 hours</b>.</p>
+                
+                <button type="submit" style="background: #27ae60; color: white; border: none; padding: 10px; width: 100%; border-radius: 5px; font-weight: bold; cursor: pointer;">Submit Request</button>
+            </form>
+            <br>
+            <p><a href="/admin?key=admin123" style="color: #333; font-size: 14px;">🔑 Go to Admin Panel</a></p>
+        </div>
     </body>
     </html>
     """)
 
-# 2. Admin Panel (Jahan aap sabhi users ke balances aur withdrawal requests dekhoge)
+# 2. Withdrawal Request API
+@app.route("/api/withdraw", methods=["POST"])
+def request_withdrawal():
+    api_key = request.form.get("api_key")
+    amount = request.form.get("amount")
+    upi_id = request.form.get("upi_id")
+    
+    if not api_key or not amount or not upi_id:
+        return "<h3 style='color:red; text-align:center; margin-top:50px;'>❌ All fields are required! <a href='/'>Go Back</a></h3>", 400
+        
+    try:
+        amount = float(amount)
+    except ValueError:
+        return "<h3 style='color:red; text-align:center; margin-top:50px;'>❌ Invalid amount! <a href='/'>Go Back</a></h3>", 400
+        
+    if amount < 10:
+        return "<h3 style='color:red; text-align:center; margin-top:50px;'>❌ Minimum withdrawal amount is ₹10! <a href='/'>Go Back</a></h3>", 400
+        
+    shop = users_collection.find_one({"api_key": api_key})
+    if not shop:
+        return "<h3 style='color:red; text-align:center; margin-top:50px;'>❌ Invalid API Key! <a href='/'>Go Back</a></h3>", 401
+        
+    # Check balance (agar aapne balance track kiya hai)
+    current_balance = shop.get("balance", 0.0)
+    if current_balance < amount:
+        return f"<h3 style='color:red; text-align:center; margin-top:50px;'>❌ Insufficient Balance! Your balance is ₹{current_balance}. <a href='/'>Go Back</a></h3>", 400
+        
+    # Save withdrawal request
+    withdrawals_collection.insert_one({
+        "shop_name": shop["shop_name"],
+        "amount": amount,
+        "upi_id": upi_id,
+        "status": "pending"
+    })
+    
+    # Telegram Notification for Withdrawal
+    log_message = (
+        f"<b>💸 New Withdrawal Request!</b>\n\n"
+        f"🏪 <b>Shop Name:</b> {shop['shop_name']}\n"
+        f"💰 <b>Amount:</b> ₹{amount}\n"
+        f"💳 <b>UPI ID:</b> <code>{upi_id}</code>\n"
+        f"⏳ <b>Clearing Time:</b> 10-12 Hours"
+    )
+    
+    try:
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
+            "chat_id": LOG_CHANNEL_ID,
+            "text": log_message,
+            "parse_mode": "HTML"
+        })
+    except Exception as e:
+        print(f"Telegram Error: {e}")
+        
+    return "<h3 style='color:green; text-align:center; margin-top:50px;'>✅ Withdrawal request submitted successfully! It will be cleared within 10-12 hours. <br><br><a href='/'>Go Home</a></h3>"
+
+# 3. Admin Panel
 @app.route("/admin")
 def admin_panel():
     key = request.args.get("key")
@@ -53,7 +127,7 @@ def admin_panel():
         <div style="max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
             <h2>👑 Admin Control Panel</h2>
             <hr>
-            <h3>📥 Pending Withdrawal Requests</h3>
+            <h3>📥 Pending Withdrawal Requests (10-12 Hours Window)</h3>
             {% if withdrawals %}
                 <table border="1" cellpadding="10" style="width:100%; border-collapse: collapse; text-align: left;">
                     <tr style="background: #eee;">
@@ -84,7 +158,7 @@ def admin_panel():
     </html>
     """, users=users, withdrawals=withdrawals)
 
-# 3. Mark Withdrawal as Paid
+# 4. Mark Withdrawal as Paid
 @app.route("/admin/pay")
 def admin_pay():
     key = request.args.get("key")
@@ -97,7 +171,7 @@ def admin_pay():
     withdrawals_collection.update_one({"_id": ObjectId(w_id)}, {"$set": {"status": "paid"}})
     return "<script>alert('Marked as Paid successfully!'); window.location='/admin?key=admin123';</script>"
 
-# 4. Signup API
+# 5. Signup API
 @app.route("/api/register", methods=["POST"])
 def register_shop():
     data = request.json
@@ -138,7 +212,7 @@ def register_shop():
     
     return jsonify({"status": "success", "message": "Shop registered successfully", "api_key": api_key})
 
-# 5. Create Order API
+# 6. Create Order API
 @app.route("/api/create_order.php", methods=["GET"])
 def create_order():
     amount = request.args.get("amount")
@@ -173,7 +247,7 @@ def create_order():
         }
     })
 
-# 6. Checkout Page
+# 7. Checkout Page
 @app.route("/checkout.php")
 def checkout_page():
     order_id = request.args.get("order_id")
