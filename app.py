@@ -7,9 +7,9 @@ import requests
 app = Flask(__name__)
 
 # ----------------- CONFIGURATION -----------------
-MONGO_URI = "mongodb+srv://your_mongo_user:your_password@cluster.mongodb.net/?retryWrites=true&w=majority"
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-LOG_CHANNEL_ID = "-100xxxxxxxxxx" 
+MONGO_URI = "mongodb+srv://wajsarif461_db_user:TwacJh76mwpHHpjw@cluster0.biueyst.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+TELEGRAM_BOT_TOKEN = "8432557033:AAGts8uHMdhRVaNFTHX3_tp2VYUEZQGEr78"
+LOG_CHANNEL_ID = "-1002580860502" 
 ADMIN_SECRET_KEY = "admin123"  # Admin panel access karne ke liye password
 # -------------------------------------------------
 
