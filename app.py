@@ -7,50 +7,102 @@ import requests
 app = Flask(__name__)
 
 # ----------------- CONFIGURATION -----------------
-# Apna MongoDB Atlas ka live URL yahan daalein
 MONGO_URI = "mongodb+srv://your_mongo_user:your_password@cluster.mongodb.net/?retryWrites=true&w=majority"
-
-# Apne Telegram Bot ka Token aur Channel/Group ID yahan daalein (Jahan signup ka alert aayega)
 TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
 LOG_CHANNEL_ID = "-100xxxxxxxxxx" 
+ADMIN_SECRET_KEY = "admin123"  # Admin panel access karne ke liye password
 # -------------------------------------------------
 
 client = MongoClient(MONGO_URI)
 db = client["fampay_gateway"]
 users_collection = db["users"]
 orders_collection = db["orders"]
+withdrawals_collection = db["withdrawals"]
 
-# 1. Home / Dashboard Page (Jahan log aayenge)
+# 1. Home / Dashboard Page
 @app.route("/")
 def home():
     return render_template_string("""
     <html>
-    <head>
-        <title>FamPay Gateway Panel</title>
-        <style>
-            body { font-family: Arial, sans-serif; background: #f4f4f9; text-align: center; padding: 50px; }
-            .box { background: white; max-width: 500px; margin: auto; padding: 30px; border-radius: 10px; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); }
-            code { background: #eee; padding: 3px 6px; border-radius: 4px; }
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <h2>🚀 FamPay Custom Gateway</h2>
-            <p>Aapka apna payment gateway server successfully run ho raha hai!</p>
-            <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
-            <h3>API Documentation:</h3>
-            <p><b>Create Order:</b><br><code>/api/create_order.php?amount=99&api_key=YOUR_KEY</code></p>
-        </div>
+    <head><title>FamPay Gateway Panel</title></head>
+    <body style="font-family: Arial; text-align: center; padding: 50px; background: #f4f4f9;">
+        <h2>🚀 FamPay Custom Gateway</h2>
+        <p>Aapka gateway server successfully run ho raha hai!</p>
+        <p><a href="/admin?key=admin123">🔑 Go to Admin Panel</a></p>
     </body>
     </html>
     """)
 
-# 2. Signup / Register API (Jab user site par shop banayega)
+# 2. Admin Panel (Jahan aap sabhi users ke balances aur withdrawal requests dekhoge)
+@app.route("/admin")
+def admin_panel():
+    key = request.args.get("key")
+    if key != ADMIN_SECRET_KEY:
+        return "<h3 style='color:red; text-align:center; margin-top:50px;'>❌ Unauthorized Access! Wrong Admin Key.</h3>", 403
+        
+    users = list(users_collection.find())
+    withdrawals = list(withdrawals_collection.find({"status": "pending"}))
+    
+    return render_template_string("""
+    <html>
+    <head>
+        <title>Admin Panel - FamPay Gateway</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: Arial; background: #f4f4f9; padding: 20px;">
+        <div style="max-width: 800px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+            <h2>👑 Admin Control Panel</h2>
+            <hr>
+            <h3>📥 Pending Withdrawal Requests</h3>
+            {% if withdrawals %}
+                <table border="1" cellpadding="10" style="width:100%; border-collapse: collapse; text-align: left;">
+                    <tr style="background: #eee;">
+                        <th>Shop Name</th>
+                        <th>Amount</th>
+                        <th>UPI ID</th>
+                        <th>Action</th>
+                    </tr>
+                    {% for w in withdrawals %}
+                    <tr>
+                        <td>{{ w.shop_name }}</td>
+                        <td>₹{{ w.amount }}</td>
+                        <td>{{ w.upi_id }}</td>
+                        <td>
+                            <a href="/admin/pay?id={{ w._id }}&key=admin123" style="background: green; color: white; padding: 5px 10px; text-decoration: none; border-radius: 4px;">Mark Paid</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            {% else %}
+                <p>No pending withdrawal requests.</p>
+            {% endif %}
+            
+            <h3 style="margin-top: 30px;">👥 Registered Users/Shops</h3>
+            <p>Total Shops: <b>{{ users|length }}</b></p>
+        </div>
+    </body>
+    </html>
+    """, users=users, withdrawals=withdrawals)
+
+# 3. Mark Withdrawal as Paid
+@app.route("/admin/pay")
+def admin_pay():
+    key = request.args.get("key")
+    if key != ADMIN_SECRET_KEY:
+        return "Unauthorized", 403
+        
+    from bson.objectid import ObjectId
+    w_id = request.args.get("id")
+    
+    withdrawals_collection.update_one({"_id": ObjectId(w_id)}, {"$set": {"status": "paid"}})
+    return "<script>alert('Marked as Paid successfully!'); window.location='/admin?key=admin123';</script>"
+
+# 4. Signup API
 @app.route("/api/register", methods=["POST"])
 def register_shop():
     data = request.json
     shop_name = data.get("shop_name")
-    phone = data.get("phone") # Yahan phone ya gmail jo bhi user de
+    phone = data.get("phone")
     upi_id = data.get("upi_id")
     
     if not shop_name or not phone or not upi_id:
@@ -59,15 +111,14 @@ def register_shop():
     raw_key = f"{shop_name}_{phone}_{uuid.uuid4()}"
     api_key = "FAM_" + hashlib.sha256(raw_key.encode()).hexdigest()[:32].upper()
     
-    # Database mein save karna
     users_collection.insert_one({
         "shop_name": shop_name,
         "phone": phone,
         "upi_id": upi_id,
-        "api_key": api_key
+        "api_key": api_key,
+        "balance": 0.0  # Initial balance
     })
     
-    # Telegram Channel par Signup ki notification bhejna
     log_message = (
         f"<b>🚨 New Gateway Registration!</b>\n\n"
         f"🏪 <b>Shop Name:</b> {shop_name}\n"
@@ -77,23 +128,17 @@ def register_shop():
     )
     
     try:
-        telegram_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
+        requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", json={
             "chat_id": LOG_CHANNEL_ID,
             "text": log_message,
             "parse_mode": "HTML"
-        }
-        requests.post(telegram_url, json=payload)
+        })
     except Exception as e:
-        print(f"Telegram Notification Error: {e}")
+        print(f"Telegram Error: {e}")
     
-    return jsonify({
-        "status": "success",
-        "message": "Shop registered successfully",
-        "api_key": api_key
-    })
+    return jsonify({"status": "success", "message": "Shop registered successfully", "api_key": api_key})
 
-# 3. Create Order API (Jisko aapka bot ya dusre developers call karenge)
+# 5. Create Order API
 @app.route("/api/create_order.php", methods=["GET"])
 def create_order():
     amount = request.args.get("amount")
@@ -107,8 +152,6 @@ def create_order():
         return jsonify({"status": "error", "message": "Invalid API Key"}), 401
         
     order_id = "ORD" + uuid.uuid4().hex[:8].upper()
-    
-    # Checkout page ka link generate karna
     request_host = request.host_url
     qr_url = f"{request_host}checkout.php?order_id={order_id}"
     
@@ -130,32 +173,26 @@ def create_order():
         }
     })
 
-# 4. Checkout Page (Jahan member payment karega)
+# 6. Checkout Page
 @app.route("/checkout.php")
 def checkout_page():
     order_id = request.args.get("order_id")
     order = orders_collection.find_one({"order_id": order_id})
     
     if not order:
-        return "<h3 style='text-align:center; margin-top:50px; color:red;'>❌ Invalid or Expired Order ID</h3>", 404
+        return "<h3 style='text-align:center; color:red;'>❌ Invalid Order ID</h3>", 404
         
     return render_template_string("""
     <html>
-    <head>
-        <title>Checkout - FamPay Gateway</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    </head>
-    <body style="font-family: Arial, sans-serif; text-align: center; background: #f9f9f9; padding: 20px;">
-        <div style="max-width: 400px; margin: auto; border: 1px solid #ddd; padding: 25px; border-radius: 12px; background: #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+    <head><title>Checkout</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="font-family: Arial; text-align: center; background: #f9f9f9; padding: 20px;">
+        <div style="max-width: 400px; margin: auto; border: 1px solid #ddd; padding: 25px; border-radius: 12px; background: #fff;">
             <h2>💳 Complete Payment</h2>
-            <p style="color: #666; font-size: 14px;">Shop: <b>{{ order.shop_name }}</b></p>
-            <p style="color: #666; font-size: 14px;">Order ID: <code>{{ order.order_id }}</code></p>
-            <h1 style="color: #27ae60; margin: 20px 0;">₹{{ order.amount }}</h1>
-            <div style="background: #f1f1f1; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
-                <p style="font-size: 13px; margin: 0; color: #444;">Pay to this UPI ID:</p>
-                <p style="font-size: 16px; font-weight: bold; word-break: break-all; margin: 5px 0 0 0; color: #000;">{{ order.upi_id }}</p>
-            </div>
-            <button onclick="alert('Payment karne ke baad wapas bot par jakar status check karein!')" style="background: #27ae60; color: white; border: none; padding: 12px 20px; font-size: 15px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold;">Check Status</button>
+            <p>Shop: <b>{{ order.shop_name }}</b></p>
+            <h1 style="color: #27ae60;">₹{{ order.amount }}</h1>
+            <p>Pay to UPI ID:</p>
+            <p style="font-weight: bold; background: #eee; padding: 10px;">{{ order.upi_id }}</p>
+            <button onclick="alert('Payment done! Go back to bot.')" style="background: #27ae60; color: white; border: none; padding: 12px; width: 100%; border-radius: 6px; cursor: pointer;">Done</button>
         </div>
     </body>
     </html>
@@ -163,4 +200,4 @@ def checkout_page():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-  
+    
