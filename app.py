@@ -14,7 +14,7 @@ app.secret_key = "spay_super_secret_key"
 
 # ----------------- CONFIGURATION -----------------
 MONGO_URI = "mongodb+srv://wajsarif461_db_user:TwacJh76mwpHHpjpw@cluster0.biueyst.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-TELEGRAM_BOT_TOKEN = "8432557033:AAH97OnOUBklHDGYbIpY63RPKd6vThujF0I"
+TELEGRAM_BOT_TOKEN = "8432557033:AAGts8uHMdhRVaNFTHX3_tp2VYUEZQGEr78"
 LOG_CHANNEL_ID = "-1002580860502" 
 ADMIN_UPI_ID = "BHARATPE.9Q0Q0K0Z8Q466572@unitype" 
 ADMIN_COMMISSION = 1.0
@@ -383,10 +383,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def run_telegram_bot():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    app_bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-    app_bot.add_handler(CommandHandler("start", start))
-    app_bot.add_handler(CallbackQueryHandler(button_handler))
-    app_bot.run_polling()
+    
+    async def main():
+        app_bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+        app_bot.add_handler(CommandHandler("start", start))
+        app_bot.add_handler(CallbackQueryHandler(button_handler))
+        
+        await app_bot.initialize()
+        await app_bot.start()
+        await app_bot.updater.start_polling(drop_pending_updates=True)
+        
+        # Keep the loop running
+        stop_event = asyncio.Event()
+        await stop_event.wait()
+
+    loop.run_until_complete(main())
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_telegram_bot)
