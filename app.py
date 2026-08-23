@@ -263,6 +263,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text("🤖 S-Pay Gateway v1.0 powered by Python & Flask.", parse_mode="Markdown")
 
 def run_telegram_bot():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     app_bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app_bot.add_handler(CommandHandler("start", start))
     app_bot.add_handler(CallbackQueryHandler(button_handler))
@@ -274,4 +276,3 @@ if __name__ == "__main__":
     t.start()
     
     app.run(host="0.0.0.0", port=5000)
-                
