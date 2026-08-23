@@ -14,7 +14,7 @@ app.secret_key = "spay_super_secret_key"
 
 # ----------------- CONFIGURATION -----------------
 MONGO_URI = "mongodb+srv://wajsarif461_db_user:TwacJh76mwpHHpjpw@cluster0.biueyst.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-TELEGRAM_BOT_TOKEN = "8432557033:AAGts8uHMdhRVaNFTHX3_tp2VYUEZQGEr78"
+TELEGRAM_BOT_TOKEN = "8432557033:AAH97OnOUBklHDGYbIpY63RPKd6vThujF0I"
 LOG_CHANNEL_ID = "-1002580860502" 
 ADMIN_UPI_ID = "BHARATPE.9Q0Q0K0Z8Q466572@unitype" 
 ADMIN_COMMISSION = 1.0
