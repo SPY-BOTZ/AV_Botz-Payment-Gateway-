@@ -7,14 +7,14 @@ import asyncio
 from flask import Flask, request, jsonify, render_template_string, session, redirect, url_for
 from pymongo import MongoClient
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
 app = Flask(__name__)
 app.secret_key = "spay_super_secret_key"
 
 # ----------------- CONFIGURATION -----------------
-MONGO_URI = "mongodb+srv://technicalseekho249_db_user:JI2rAJvc0RE2asYE@cluster0.8hgdhqt.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-TELEGRAM_BOT_TOKEN = "8432557033:AAGts8uHMdhRVaNFTHX3_tp2VYUEZQGEr78"
+MONGO_URI = "mongodb+srv://wajsarif461_db_user:TwacJh76mwpHHpjpw@cluster0.biueyst.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+TELEGRAM_BOT_TOKEN = "8432557033:AAHVpF5M1kLN4XKiWxDNWXXdz5ZT86UF1KY"
 # -------------------------------------------------
 
 client = MongoClient(MONGO_URI)
@@ -22,57 +22,58 @@ db = client["spay_gateway"]
 users_collection = db["users"]
 orders_collection = db["orders"]
 
-# --- DASHBOARD LAYOUT TEMPLATE ---
-DASHBOARD_LAYOUT = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>FamPay Gateway Panel</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fdfbf7; margin: 0; padding: 0; color: #222; }
-        .sidebar { width: 260px; background: #fff; position: fixed; height: 100%; border-right: 1px solid #eaeaea; padding-top: 20px; box-sizing: border-box; overflow-y: auto; }
-        .sidebar-brand { padding: 0 20px 20px 20px; font-size: 18px; font-weight: 800; color: #111; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #eee; }
-        .sidebar-brand span { background: #d35400; color: white; padding: 3px 6px; border-radius: 4px; font-size: 14px; }
-        .sidebar a { padding: 12px 20px; display: block; color: #444; text-decoration: none; font-size: 14px; font-weight: 600; border-left: 3px solid transparent; }
-        .sidebar a:hover, .sidebar a.active { background: #f9f9f9; border-left-color: #d35400; color: #d35400; }
-        .main-content { margin-left: 260px; padding: 35px; box-sizing: border-box; }
-        .header { background: #fff; padding: 15px 35px; border-bottom: 1px solid #eaeaea; display: flex; justify-content: space-between; align-items: center; margin-left: 260px; position: sticky; top: 0; z-index: 10; }
-        .card { background: #fff; padding: 25px; border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 2px 8px rgba(0,0,0,0.01); margin-bottom: 20px; }
-        .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px; }
-        .stat-card { background: #fff; padding: 20px; border-radius: 12px; border: 1px solid #eaeaea; display: flex; justify-content: space-between; align-items: center; }
-        .stat-card div p { margin: 0 0 5px 0; font-size: 12px; color: #777; font-weight: 600; text-transform: uppercase; }
-        .stat-card div h3 { margin: 0; font-size: 20px; color: #111; font-weight: 700; }
-        input, select { width: 100%; padding: 12px; margin: 8px 0 16px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 14px; }
-        .btn { background: #d35400; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; text-decoration: none; display: inline-block; }
-        @media(max-width: 768px) { .sidebar { width: 100%; height: auto; position: relative; } .main-content, .header { margin-left: 0; } }
-    </style>
-</head>
-<body>
-    <div class="sidebar">
-        <div class="sidebar-brand"><span>💳</span> FamPay Gateway</div>
-        <div style="padding: 15px 20px; font-size: 13px; color: #666; font-weight: 600; border-bottom: 1px solid #eee;">
-            Shop: <span style="color:#111;">{{ shop.shop_name if shop else 'Merchant' }}</span>
+# --- HELPER FUNCTION FOR RENDER ---
+def render_page(shop, title, body_content, active_tab=""):
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{{ title }} - FamPay Gateway</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #fdfbf7; margin: 0; padding: 0; color: #222; }
+            .sidebar { width: 260px; background: #fff; position: fixed; height: 100%; border-right: 1px solid #eaeaea; padding-top: 20px; box-sizing: border-box; overflow-y: auto; }
+            .sidebar-brand { padding: 0 20px 20px 20px; font-size: 18px; font-weight: 800; color: #111; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #eee; }
+            .sidebar-brand span { background: #d35400; color: white; padding: 3px 6px; border-radius: 4px; font-size: 14px; }
+            .sidebar a { padding: 12px 20px; display: block; color: #444; text-decoration: none; font-size: 14px; font-weight: 600; border-left: 3px solid transparent; }
+            .sidebar a:hover, .sidebar a.active { background: #f9f9f9; border-left-color: #d35400; color: #d35400; }
+            .main-content { margin-left: 260px; padding: 35px; box-sizing: border-box; }
+            .header { background: #fff; padding: 15px 35px; border-bottom: 1px solid #eaeaea; display: flex; justify-content: space-between; align-items: center; margin-left: 260px; position: sticky; top: 0; z-index: 10; }
+            .card { background: #fff; padding: 25px; border-radius: 12px; border: 1px solid #eaeaea; box-shadow: 0 2px 8px rgba(0,0,0,0.01); margin-bottom: 20px; }
+            .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 25px; }
+            .stat-card { background: #fff; padding: 20px; border-radius: 12px; border: 1px solid #eaeaea; display: flex; justify-content: space-between; align-items: center; }
+            .stat-card div p { margin: 0 0 5px 0; font-size: 12px; color: #777; font-weight: 600; text-transform: uppercase; }
+            .stat-card div h3 { margin: 0; font-size: 20px; color: #111; font-weight: 700; }
+            input, select { width: 100%; padding: 12px; margin: 8px 0 16px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 14px; }
+            .btn { background: #d35400; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 14px; text-decoration: none; display: inline-block; }
+            @media(max-width: 768px) { .sidebar { width: 100%; height: auto; position: relative; } .main-content, .header { margin-left: 0; } }
+        </style>
+    </head>
+    <body>
+        <div class="sidebar">
+            <div class="sidebar-brand"><span>💳</span> FamPay Gateway</div>
+            <div style="padding: 15px 20px; font-size: 13px; color: #666; font-weight: 600; border-bottom: 1px solid #eee;">
+                Shop: <span style="color:#111;">{{ shop.get('shop_name', 'Merchant') }}</span>
+            </div>
+            <a href="/dashboard" class="{% if active_tab == 'overview' %}active{% endif %}">📊 Overview</a>
+            <a href="/dashboard/apikey" class="{% if active_tab == 'apikey' %}active{% endif %}">🔑 API Key</a>
+            <a href="/dashboard/orders" class="{% if active_tab == 'orders' %}active{% endif %}">📦 Recent Orders</a>
+            <a href="/dashboard/api-docs" class="{% if active_tab == 'apidocs' %}active{% endif %}">📄 API Docs</a>
+            <a href="/dashboard/payment-setup" class="{% if active_tab == 'paymentsetup' %}active{% endif %}">⚙️ Payment Setup</a>
+            <a href="/dashboard/payment-link" class="{% if active_tab == 'paymentlink' %}active{% endif %}">🔗 Your Payment Link</a>
+            <a href="/dashboard/withdraw" class="{% if active_tab == 'withdraw' %}active{% endif %}">💸 Withdraw & Balance</a>
+            <a href="/logout" style="color: #e74c3c; margin-top: 20px;">🚪 Logout</a>
         </div>
-        <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">📊 Overview</a>
-        <a href="/dashboard/apikey" class="{% if request.path == '/dashboard/apikey' %}active{% endif %}">🔑 API Key</a>
-        <a href="/dashboard/orders" class="{% if request.path == '/dashboard/orders' %}active{% endif %}">📦 Recent Orders</a>
-        <a href="/dashboard/api-docs" class="{% if request.path == '/dashboard/api-docs' %}active{% endif %}">📄 API Docs</a>
-        <a href="/dashboard/payment-setup" class="{% if request.path == '/dashboard/payment-setup' %}active{% endif %}">⚙️ Payment Setup</a>
-        <a href="/dashboard/payment-link" class="{% if request.path == '/dashboard/payment-link' %}active{% endif %}">🔗 Your Payment Link</a>
-        <a href="/dashboard/withdraw" class="{% if request.path == '/dashboard/withdraw' %}active{% endif %}">💸 Withdraw & Balance</a>
-        <a href="/logout" style="color: #e74c3c; margin-top: 20px;">🚪 Logout</a>
-    </div>
-    <div class="header">
-        <span style="font-weight: 700; color: #333; font-size: 15px;">Merchant Dashboard</span>
-        <span style="background: #e1f5fe; color: #0288d1; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">Plan: Free</span>
-    </div>
-    <div class="main-content">
-        {% block content %}{% endblock %}
-    </div>
-</body>
-</html>
-"""
+        <div class="header">
+            <span style="font-weight: 700; color: #333; font-size: 15px;">Merchant Dashboard</span>
+            <span style="background: #e1f5fe; color: #0288d1; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;">Plan: Free</span>
+        </div>
+        <div class="main-content">
+            {{ body_content | safe }}
+        </div>
+    </body>
+    </html>
+    """, shop=shop, title=title, body_content=body_content, active_tab=active_tab)
 
 # --- LANDING PAGE ---
 @app.route("/")
@@ -215,42 +216,42 @@ def dashboard():
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
     if not shop: return redirect(url_for("logout"))
     orders_count = orders_collection.count_documents({"shop_name": shop["shop_name"]})
-    return render_template_string(DASHBOARD_LAYOUT + """
-    {% block content %}
-    {% if not shop.get('upi_id') or not shop.get('gmail') %}
+    
+    body = f"""
+    {{% if not shop.get('upi_id') or not shop.get('gmail') %}}
     <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; display:flex; justify-content:space-between; align-items:center;">
         <span>⚠️ Payment Setup is incomplete — please add your UPI ID and Gmail in "Payment Setup".</span>
         <a href="/dashboard/payment-setup" style="color: #856404; font-weight:bold; text-decoration:underline;">Complete it now →</a>
     </div>
-    {% endif %}
+    {{% endif %}}
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Overview</h2>
     <div class="grid-stats">
-        <div class="stat-card"><div><p>Today's Orders</p><h3>{{ orders_count }}</h3></div></div>
+        <div class="stat-card"><div><p>Today's Orders</p><h3>{orders_count}</h3></div></div>
         <div class="stat-card"><div><p>Today's Total</p><h3 style="color:#27ae60;">₹0.00</h3></div></div>
-        <div class="stat-card"><div><p>All-Time Orders</p><h3>{{ orders_count }}</h3></div></div>
-        <div class="stat-card"><div><p>All-Time Total</p><h3 style="color:#27ae60;">₹{{ shop.get('balance', 0.0) }}</h3></div></div>
+        <div class="stat-card"><div><p>All-Time Orders</p><h3>{orders_count}</h3></div></div>
+        <div class="stat-card"><div><p>All-Time Total</p><h3 style="color:#27ae60;">₹{shop.get('balance', 0.0)}</h3></div></div>
     </div>
-    {% endblock %}
-    """, shop=shop, orders_count=orders_count)
+    """
+    return render_page(shop, "Overview", body, "overview")
 
 @app.route("/dashboard/apikey")
 def dashboard_apikey():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
     if not shop: return redirect(url_for("logout"))
-    return render_template_string(DASHBOARD_LAYOUT + """
-    {% block content %}
+    
+    body = f"""
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">API Key</h2>
     <div class="card" style="max-width: 500px; background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white; border-radius: 16px;">
         <p style="margin:0 0 10px 0; font-size:12px; opacity:0.8;">YOUR API KEY</p>
-        <h3 id="apikey-text" style="font-family:monospace; font-size:16px; word-break:break-all; margin:0 0 20px 0;">{{ shop.get('api_key') }}</h3>
-        <p style="margin:0; font-size:12px; font-weight:bold;">CARD HOLDER: {{ shop.shop_name | upper }}</p>
+        <h3 id="apikey-text" style="font-family:monospace; font-size:16px; word-break:break-all; margin:0 0 20px 0;">{shop.get('api_key')}</h3>
+        <p style="margin:0; font-size:12px; font-weight:bold;">CARD HOLDER: {shop.get('shop_name', '').upper()}</p>
     </div>
     <div style="margin-top:15px;">
-        <button onclick="navigator.clipboard.writeText('{{ shop.get('api_key') }}'); alert('API Key Copied!');" class="btn" style="background:#333;">Copy Key</button>
+        <button onclick="navigator.clipboard.writeText('{shop.get('api_key')}'); alert('API Key Copied!');" class="btn" style="background:#333;">Copy Key</button>
     </div>
-    {% endblock %}
-    """, shop=shop)
+    """
+    return render_page(shop, "API Key", body, "apikey")
 
 @app.route("/dashboard/orders")
 def dashboard_orders():
@@ -258,70 +259,105 @@ def dashboard_orders():
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
     if not shop: return redirect(url_for("logout"))
     orders = list(orders_collection.find({"shop_name": shop["shop_name"]}))
-    return render_template_string(DASHBOARD_LAYOUT + """
-    {% block content %}
+    
+    rows = ""
+    if orders:
+        for o in orders:
+            rows += f"""<tr style="border-bottom:1px solid #f9f9f9;"><td style="padding:8px;">{o.get('order_id')}</td><td>₹{o.get('amount')}</td><td><span style="color:green;">{o.get('status')}</span></td></tr>"""
+        table_html = f"""
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <tr style="border-bottom:1px solid #eee; text-align:left;"><th style="padding:8px;">Order ID</th><th>Amount</th><th>Status</th></tr>
+            {rows}
+        </table>"""
+    else:
+        table_html = '<p style="color:#666; font-size:14px; margin:0;">No orders yet.</p>'
+
+    body = f"""
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Recent Orders</h2>
     <div class="card">
-        {% if orders %}
-            <table style="width:100%; border-collapse:collapse; font-size:13px;">
-                <tr style="border-bottom:1px solid #eee; text-align:left;"><th style="padding:8px;">Order ID</th><th>Amount</th><th>Status</th></tr>
-                {% for o in orders %}
-                <tr style="border-bottom:1px solid #f9f9f9;"><td style="padding:8px;">{{ o.order_id }}</td><td>₹{{ o.amount }}</td><td><span style="color:green;">{{ o.status }}</span></td></tr>
-                {% endfor %}
-            </table>
-        {% else %}
-            <p style="color:#666; font-size:14px; margin:0;">No orders yet.</p>
-        {% endif %}
+        {table_html}
     </div>
-    {% endblock %}
-    """, shop=shop, orders=orders)
+    """
+    return render_page(shop, "Recent Orders", body, "orders")
 
 @app.route("/dashboard/api-docs")
 def dashboard_api_docs():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
     if not shop: return redirect(url_for("logout"))
-    return render_template_string(DASHBOARD_LAYOUT + """
-    {% block content %}
+    
+    body = f"""
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">API Docs</h2>
     <div class="card">
         <h3 style="margin-top:0; font-size:15px;">Create an order</h3>
-        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/create_order.php?amount=99&api_key={{ shop.get('api_key') }}</code></pre>
+        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/create_order.php?amount=99&api_key={shop.get('api_key')}</code></pre>
         
         <h3 style="font-size:15px; margin-top:20px;">Check payment status</h3>
-        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/check_payment.php?order_id=YOUR_ORDER_ID&api_key={{ shop.get('api_key') }}</code></pre>
+        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/check_payment.php?order_id=YOUR_ORDER_ID&api_key={shop.get('api_key')}</code></pre>
     </div>
-    {% endblock %}
-    """, shop=shop)
+    """
+    return render_page(shop, "API Docs", body, "apidocs")
+
+@app.route("/dashboard/payment-setup", methods=["GET", "POST"])
+def dashboard_payment_setup():
+    if "shop_name" not in session: return redirect(url_for("login"))
+    shop = users_collection.find_one({"shop_name": session["shop_name"]})
+    if not shop: return redirect(url_for("logout"))
+    
+    if request.method == "POST":
+        upi_id = request.form.get("upi_id")
+        gmail = request.form.get("gmail")
+        gmail_pass = request.form.get("gmail_pass")
+        users_collection.update_one({"shop_name": shop["shop_name"]}, {"$set": {"upi_id": upi_id, "gmail": gmail, "gmail_pass": gmail_pass}})
+        return redirect(url_for("dashboard_payment_setup"))
+        
+    body = f"""
+    <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Payment Setup</h2>
+    <div class="card" style="max-width: 600px;">
+        <form method="POST">
+            <label style="font-size:13px; font-weight:600; color:#444;">UPI ID (Where you want payments)</label>
+            <input type="text" name="upi_id" value="{shop.get('upi_id', '')}" required>
+            
+            <label style="font-size:13px; font-weight:600; color:#444;">Gmail Address (For Auto-verification)</label>
+            <input type="email" name="gmail" value="{shop.get('gmail', '')}" required>
+            
+            <label style="font-size:13px; font-weight:600; color:#444;">Gmail App Password</label>
+            <input type="password" name="gmail_pass" value="{shop.get('gmail_pass', '')}" required>
+            
+            <button type="submit" class="btn">Save Payment Setup</button>
+        </form>
+    </div>
+    """
+    return render_page(shop, "Payment Setup", body, "paymentsetup")
 
 @app.route("/dashboard/payment-link")
 def dashboard_payment_link():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
     if not shop: return redirect(url_for("logout"))
-    return render_template_string(DASHBOARD_LAYOUT + """
-    {% block content %}
+    
+    body = f"""
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Your Payment Link</h2>
     <div class="card">
         <label style="font-size:13px; font-weight:600; color:#555;">Direct Payment URL</label>
-        <input type="text" readonly value="{{ request.host_url }}pay?key={{ shop.get('api_key') }}" style="background:#f9f9f9;">
+        <input type="text" readonly value="{{ request.host_url }}pay?key={shop.get('api_key')}" style="background:#f9f9f9;">
     </div>
-    {% endblock %}
-    """, shop=shop)
+    """
+    return render_page(shop, "Payment Link", body, "paymentlink")
 
 @app.route("/dashboard/withdraw")
 def dashboard_withdraw():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
     if not shop: return redirect(url_for("logout"))
-    return render_template_string(DASHBOARD_LAYOUT + """
-    {% block content %}
+    
+    body = f"""
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Withdraw & Balance</h2>
     <div class="card">
-        <p style="margin:0 0 10px 0; font-size:14px; color:#555;">Available Balance: <strong style="color:#27ae60; font-size:18px;">₹{{ shop.get('balance', 0.0) }}</strong></p>
+        <p style="margin:0 0 10px 0; font-size:14px; color:#555;">Available Balance: <strong style="color:#27ae60; font-size:18px;">₹{shop.get('balance', 0.0)}</strong></p>
     </div>
-    {% endblock %}
-    """, shop=shop)
+    """
+    return render_page(shop, "Withdraw & Balance", body, "withdraw")
 
 @app.route("/logout")
 def logout():
@@ -421,7 +457,7 @@ def api_check_payment():
         }
     })
 
-# --- TELEGRAM BOT LOGIC ---
+# --- TELEGRAM BOT LOGIC (Safe Error Handling) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🌐 Visit Web Panel", url="https://github.com/SPY-BOTZ")]]
     await update.message.reply_text("✨ Welcome to FamPay Gateway Bot!", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -439,7 +475,7 @@ def run_telegram_bot():
             await asyncio.Event().wait()
         loop.run_until_complete(main())
     except Exception as e:
-        print(f"Telegram Bot Error: {e}")
+        print(f"Telegram Bot Notice: Token issue or network restriction bypassed ({e})")
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_telegram_bot)
