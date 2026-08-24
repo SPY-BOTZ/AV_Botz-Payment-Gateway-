@@ -14,7 +14,7 @@ app.secret_key = "spay_super_secret_key"
 
 # ----------------- CONFIGURATION -----------------
 MONGO_URI = "mongodb+srv://wajsarif461_db_user:TwacJh76mwpHHpjpw@cluster0.biueyst.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-TELEGRAM_BOT_TOKEN = "8432557033:AAHVpF5M1kLN4XKiWxDNWXXdz5ZT86UF1KY"
+TELEGRAM_BOT_TOKEN = "8432557033:AAGts8uHMdhRVaNFTHX3_tp2VYUEZQGEr78"
 # -------------------------------------------------
 
 client = MongoClient(MONGO_URI)
@@ -177,13 +177,19 @@ def signup():
 def login():
     if request.method == "POST":
         try:
-            mobile = request.form.get("mobile")
+            login_id = request.form.get("mobile") # Yeh mobile ya gmail dono ho sakta hai
             password = request.form.get("password")
-            user = users_collection.find_one({"mobile": mobile, "password": password})
+            
+            # Mobile ya Gmail dono me se kisi se bhi match kar lo
+            user = users_collection.find_one({
+                "$or": [{"mobile": login_id}, {"gmail": login_id}],
+                "password": password
+            })
+            
             if user:
                 session["shop_name"] = user["shop_name"]
                 return redirect(url_for("dashboard"))
-            return "<script>alert('Invalid mobile number or password!'); window.location='/login';</script>"
+            return "<script>alert('Invalid mobile/email or password!'); window.location='/login';</script>"
         except Exception as e:
             return f"<script>alert('Error: {str(e)}'); window.location='/login';</script>"
         
@@ -195,8 +201,8 @@ def login():
         <div style="background: white; padding: 35px; border-radius: 12px; width: 380px; border: 1px solid #eaeaea; box-shadow: 0 4px 15px rgba(0,0,0,0.02);">
             <h2 style="text-align:center; margin-top:0; font-size:16px; color:#555;">MERCHANT LOGIN</h2>
             <form method="POST">
-                <label style="font-size:13px; font-weight:600; color:#444;">Mobile Number</label>
-                <input type="text" name="mobile" required style="width:100%; padding:10px; margin:6px 0 14px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
+                <label style="font-size:13px; font-weight:600; color:#444;">Mobile Number or Gmail</label>
+                <input type="text" name="mobile" placeholder="Enter mobile or gmail" required style="width:100%; padding:10px; margin:6px 0 14px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
                 
                 <label style="font-size:13px; font-weight:600; color:#444;">Password</label>
                 <input type="password" name="password" required style="width:100%; padding:10px; margin:6px 0 20px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box;">
@@ -218,12 +224,12 @@ def dashboard():
     orders_count = orders_collection.count_documents({"shop_name": shop["shop_name"]})
     
     body = f"""
-    {{% if not shop.get('upi_id') or not shop.get('gmail') %}}
+    {% if not shop.get('upi_id') or not shop.get('gmail') %}
     <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; display:flex; justify-content:space-between; align-items:center;">
         <span>⚠️ Payment Setup is incomplete — please add your UPI ID and Gmail in "Payment Setup".</span>
         <a href="/dashboard/payment-setup" style="color: #856404; font-weight:bold; text-decoration:underline;">Complete it now →</a>
     </div>
-    {{% endif %}}
+    {% endif %}
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Overview</h2>
     <div class="grid-stats">
         <div class="stat-card"><div><p>Today's Orders</p><h3>{orders_count}</h3></div></div>
@@ -286,14 +292,15 @@ def dashboard_api_docs():
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
     if not shop: return redirect(url_for("logout"))
     
+    host_url = request.host_url
     body = f"""
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">API Docs</h2>
     <div class="card">
         <h3 style="margin-top:0; font-size:15px;">Create an order</h3>
-        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/create_order.php?amount=99&api_key={shop.get('api_key')}</code></pre>
+        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {host_url}api/create_order.php?amount=99&api_key={shop.get('api_key')}</code></pre>
         
         <h3 style="font-size:15px; margin-top:20px;">Check payment status</h3>
-        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/check_payment.php?order_id=YOUR_ORDER_ID&api_key={shop.get('api_key')}</code></pre>
+        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {host_url}api/check_payment.php?order_id=YOUR_ORDER_ID&api_key={shop.get('api_key')}</code></pre>
     </div>
     """
     return render_page(shop, "API Docs", body, "apidocs")
@@ -340,10 +347,10 @@ def dashboard_payment_link():
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Your Payment Link</h2>
     <div class="card">
         <label style="font-size:13px; font-weight:600; color:#555;">Direct Payment URL</label>
-        <input type="text" readonly value="{{ request.host_url }}pay?key={shop.get('api_key')}" style="background:#f9f9f9;">
+        <input type="text" readonly value="{request.host_url}pay?key={shop.get('api_key')}" style="background:#f9f9f9;">
     </div>
     """
-    return render_page(shop, "Payment Link", body, "paymentlink")
+    return render_page(shop, "Your Payment Link", body, "paymentlink")
 
 @app.route("/dashboard/withdraw")
 def dashboard_withdraw():
@@ -457,7 +464,7 @@ def api_check_payment():
         }
     })
 
-# --- TELEGRAM BOT LOGIC (Safe Error Handling) ---
+# --- TELEGRAM BOT LOGIC ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🌐 Visit Web Panel", url="https://github.com/SPY-BOTZ")]]
     await update.message.reply_text("✨ Welcome to FamPay Gateway Bot!", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -482,4 +489,4 @@ if __name__ == "__main__":
     t.daemon = True
     t.start()
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=port, debug=True)
