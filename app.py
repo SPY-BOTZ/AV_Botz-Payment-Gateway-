@@ -13,10 +13,8 @@ app = Flask(__name__)
 app.secret_key = "spay_super_secret_key"
 
 # ----------------- CONFIGURATION -----------------
-MONGO_URI = "mongodb+srv://wajsarif461_db_user:TwacJh76mwpHHpjpw@cluster0.biueyst.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+MONGO_URI = "mongodb+srv://technicalseekho249_db_user:JI2rAJvc0RE2asYE@cluster0.8hgdhqt.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 TELEGRAM_BOT_TOKEN = "8432557033:AAGts8uHMdhRVaNFTHX3_tp2VYUEZQGEr78"
-LOG_CHANNEL_ID = "-1002580860502" 
-ADMIN_UPI_ID = "BHARATPE.9Q0Q0K0Z8Q466572@unitype" 
 # -------------------------------------------------
 
 client = MongoClient(MONGO_URI)
@@ -54,7 +52,7 @@ DASHBOARD_LAYOUT = """
     <div class="sidebar">
         <div class="sidebar-brand"><span>💳</span> FamPay Gateway</div>
         <div style="padding: 15px 20px; font-size: 13px; color: #666; font-weight: 600; border-bottom: 1px solid #eee;">
-            Shop: <span style="color:#111;">{{ shop.shop_name }}</span>
+            Shop: <span style="color:#111;">{{ shop.shop_name if shop else 'Merchant' }}</span>
         </div>
         <a href="/dashboard" class="{% if request.path == '/dashboard' %}active{% endif %}">📊 Overview</a>
         <a href="/dashboard/apikey" class="{% if request.path == '/dashboard/apikey' %}active{% endif %}">🔑 API Key</a>
@@ -124,22 +122,28 @@ def home():
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
-        shop_name = request.form.get("shop_name")
-        mobile = request.form.get("mobile")
-        password = request.form.get("password")
-        
-        if users_collection.find_one({"mobile": mobile}):
-            return "<script>alert('This mobile number is already registered. Please log in.'); window.location='/signup';</script>"
+        try:
+            shop_name = request.form.get("shop_name")
+            mobile = request.form.get("mobile")
+            password = request.form.get("password")
             
-        api_key = "FAM_" + hashlib.sha256(f"{shop_name}_{mobile}_{uuid.uuid4()}".encode()).hexdigest()[:32].upper()
-        
-        users_collection.insert_one({
-            "shop_name": shop_name, "mobile": mobile, "password": password, 
-            "upi_id": "", "gmail": "", "gmail_pass": "", "api_key": api_key, "balance": 0.0
-        })
-        
-        session["shop_name"] = shop_name
-        return redirect(url_for("dashboard"))
+            if not shop_name or not mobile or not password:
+                return "<script>alert('All fields are required!'); window.location='/signup';</script>"
+                
+            if users_collection.find_one({"mobile": mobile}):
+                return "<script>alert('This mobile number is already registered. Please log in.'); window.location='/signup';</script>"
+                
+            api_key = "FAM_" + hashlib.sha256(f"{shop_name}_{mobile}_{uuid.uuid4()}".encode()).hexdigest()[:32].upper()
+            
+            users_collection.insert_one({
+                "shop_name": shop_name, "mobile": mobile, "password": password, 
+                "upi_id": "", "gmail": "", "gmail_pass": "", "api_key": api_key, "balance": 0.0
+            })
+            
+            session["shop_name"] = shop_name
+            return redirect(url_for("dashboard"))
+        except Exception as e:
+            return f"<script>alert('Error: {str(e)}'); window.location='/signup';</script>"
         
     return render_template_string("""
     <!DOCTYPE html>
@@ -171,13 +175,16 @@ def signup():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        mobile = request.form.get("mobile")
-        password = request.form.get("password")
-        user = users_collection.find_one({"mobile": mobile, "password": password})
-        if user:
-            session["shop_name"] = user["shop_name"]
-            return redirect(url_for("dashboard"))
-        return "<script>alert('Invalid credentials!'); window.location='/login';</script>"
+        try:
+            mobile = request.form.get("mobile")
+            password = request.form.get("password")
+            user = users_collection.find_one({"mobile": mobile, "password": password})
+            if user:
+                session["shop_name"] = user["shop_name"]
+                return redirect(url_for("dashboard"))
+            return "<script>alert('Invalid mobile number or password!'); window.location='/login';</script>"
+        except Exception as e:
+            return f"<script>alert('Error: {str(e)}'); window.location='/login';</script>"
         
     return render_template_string("""
     <!DOCTYPE html>
@@ -206,12 +213,13 @@ def login():
 def dashboard():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
+    if not shop: return redirect(url_for("logout"))
     orders_count = orders_collection.count_documents({"shop_name": shop["shop_name"]})
     return render_template_string(DASHBOARD_LAYOUT + """
     {% block content %}
-    {% if not shop.upi_id or not shop.gmail %}
+    {% if not shop.get('upi_id') or not shop.get('gmail') %}
     <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; display:flex; justify-content:space-between; align-items:center;">
-        <span>⚠️ Payment Setup is incomplete — orders can't be created/verified via the API until you add your UPI ID and Gmail in "Payment Setup".</span>
+        <span>⚠️ Payment Setup is incomplete — please add your UPI ID and Gmail in "Payment Setup".</span>
         <a href="/dashboard/payment-setup" style="color: #856404; font-weight:bold; text-decoration:underline;">Complete it now →</a>
     </div>
     {% endif %}
@@ -220,7 +228,7 @@ def dashboard():
         <div class="stat-card"><div><p>Today's Orders</p><h3>{{ orders_count }}</h3></div></div>
         <div class="stat-card"><div><p>Today's Total</p><h3 style="color:#27ae60;">₹0.00</h3></div></div>
         <div class="stat-card"><div><p>All-Time Orders</p><h3>{{ orders_count }}</h3></div></div>
-        <div class="stat-card"><div><p>All-Time Total</p><h3 style="color:#27ae60;">₹{{ shop.balance }}</h3></div></div>
+        <div class="stat-card"><div><p>All-Time Total</p><h3 style="color:#27ae60;">₹{{ shop.get('balance', 0.0) }}</h3></div></div>
     </div>
     {% endblock %}
     """, shop=shop, orders_count=orders_count)
@@ -229,16 +237,17 @@ def dashboard():
 def dashboard_apikey():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
+    if not shop: return redirect(url_for("logout"))
     return render_template_string(DASHBOARD_LAYOUT + """
     {% block content %}
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">API Key</h2>
     <div class="card" style="max-width: 500px; background: linear-gradient(135deg, #2c3e50, #4ca1af); color: white; border-radius: 16px;">
         <p style="margin:0 0 10px 0; font-size:12px; opacity:0.8;">YOUR API KEY</p>
-        <h3 id="apikey-text" style="font-family:monospace; font-size:16px; word-break:break-all; margin:0 0 20px 0;">{{ shop.api_key }}</h3>
+        <h3 id="apikey-text" style="font-family:monospace; font-size:16px; word-break:break-all; margin:0 0 20px 0;">{{ shop.get('api_key') }}</h3>
         <p style="margin:0; font-size:12px; font-weight:bold;">CARD HOLDER: {{ shop.shop_name | upper }}</p>
     </div>
     <div style="margin-top:15px;">
-        <button onclick="navigator.clipboard.writeText('{{ shop.api_key }}'); alert('API Key Copied!');" class="btn" style="background:#333;">Copy Key</button>
+        <button onclick="navigator.clipboard.writeText('{{ shop.get('api_key') }}'); alert('API Key Copied!');" class="btn" style="background:#333;">Copy Key</button>
     </div>
     {% endblock %}
     """, shop=shop)
@@ -247,6 +256,7 @@ def dashboard_apikey():
 def dashboard_orders():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
+    if not shop: return redirect(url_for("logout"))
     orders = list(orders_collection.find({"shop_name": shop["shop_name"]}))
     return render_template_string(DASHBOARD_LAYOUT + """
     {% block content %}
@@ -270,46 +280,16 @@ def dashboard_orders():
 def dashboard_api_docs():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
+    if not shop: return redirect(url_for("logout"))
     return render_template_string(DASHBOARD_LAYOUT + """
     {% block content %}
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">API Docs</h2>
     <div class="card">
         <h3 style="margin-top:0; font-size:15px;">Create an order</h3>
-        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/create_order.php?amount=99&api_key={{ shop.api_key }}</code></pre>
+        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/create_order.php?amount=99&api_key={{ shop.get('api_key') }}</code></pre>
         
         <h3 style="font-size:15px; margin-top:20px;">Check payment status</h3>
-        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/check_payment.php?order_id=YOUR_ORDER_ID&api_key={{ shop.api_key }}</code></pre>
-    </div>
-    {% endblock %}
-    """, shop=shop)
-
-@app.route("/dashboard/payment-setup", methods=["GET", "POST"])
-def dashboard_payment_setup():
-    if "shop_name" not in session: return redirect(url_for("login"))
-    shop = users_collection.find_one({"shop_name": session["shop_name"]})
-    if request.method == "POST":
-        upi_id = request.form.get("upi_id")
-        gmail = request.form.get("gmail")
-        gmail_pass = request.form.get("gmail_pass")
-        users_collection.update_one({"shop_name": shop["shop_name"]}, {"$set": {"upi_id": upi_id, "gmail": gmail, "gmail_pass": gmail_pass}})
-        return redirect(url_for("dashboard_payment_setup"))
-        
-    return render_template_string(DASHBOARD_LAYOUT + """
-    {% block content %}
-    <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Payment Setup</h2>
-    <div class="card" style="max-width: 600px;">
-        <form method="POST">
-            <label style="font-size:13px; font-weight:600; color:#444;">UPI ID (Where you want payments)</label>
-            <input type="text" name="upi_id" value="{{ shop.upi_id }}" required>
-            
-            <label style="font-size:13px; font-weight:600; color:#444;">Gmail Address (For Auto-verification)</label>
-            <input type="email" name="gmail" value="{{ shop.gmail }}" required>
-            
-            <label style="font-size:13px; font-weight:600; color:#444;">Gmail App Password</label>
-            <input type="password" name="gmail_pass" value="{{ shop.gmail_pass }}" required>
-            
-            <button type="submit" class="btn">Save Payment Setup</button>
-        </form>
+        <pre style="background:#f4f4f4; padding:10px; border-radius:6px; font-size:12px; overflow-x:auto;"><code>GET {{ request.host_url }}api/check_payment.php?order_id=YOUR_ORDER_ID&api_key={{ shop.get('api_key') }}</code></pre>
     </div>
     {% endblock %}
     """, shop=shop)
@@ -318,12 +298,13 @@ def dashboard_payment_setup():
 def dashboard_payment_link():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
+    if not shop: return redirect(url_for("logout"))
     return render_template_string(DASHBOARD_LAYOUT + """
     {% block content %}
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Your Payment Link</h2>
     <div class="card">
         <label style="font-size:13px; font-weight:600; color:#555;">Direct Payment URL</label>
-        <input type="text" readonly value="{{ request.host_url }}pay?key={{ shop.api_key }}" style="background:#f9f9f9;">
+        <input type="text" readonly value="{{ request.host_url }}pay?key={{ shop.get('api_key') }}" style="background:#f9f9f9;">
     </div>
     {% endblock %}
     """, shop=shop)
@@ -332,19 +313,69 @@ def dashboard_payment_link():
 def dashboard_withdraw():
     if "shop_name" not in session: return redirect(url_for("login"))
     shop = users_collection.find_one({"shop_name": session["shop_name"]})
+    if not shop: return redirect(url_for("logout"))
     return render_template_string(DASHBOARD_LAYOUT + """
     {% block content %}
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Withdraw & Balance</h2>
     <div class="card">
-        <p style="margin:0 0 10px 0; font-size:14px; color:#555;">Available Balance: <strong style="color:#27ae60; font-size:18px;">₹{{ shop.balance }}</strong></p>
+        <p style="margin:0 0 10px 0; font-size:14px; color:#555;">Available Balance: <strong style="color:#27ae60; font-size:18px;">₹{{ shop.get('balance', 0.0) }}</strong></p>
     </div>
     {% endblock %}
     """, shop=shop)
 
 @app.route("/logout")
 def logout():
-    session.pop("shop_name", None)
+    session.clear()
     return redirect(url_for("home"))
+
+# --- PAYMENT PAGE ---
+@app.route("/pay")
+def pay_page():
+    order_id = request.args.get("order_id")
+    key = request.args.get("key")
+    
+    order = None
+    shop = None
+    
+    if order_id:
+        order = orders_collection.find_one({"order_id": order_id})
+        if order:
+            shop = users_collection.find_one({"shop_name": order["shop_name"]})
+    elif key:
+        shop = users_collection.find_one({"api_key": key})
+        
+    if not shop:
+        return "<h1>Invalid Payment Link or Shop Not Found</h1>", 404
+        
+    amount = order["amount"] if order else "10.00"
+    o_id = order_id if order else "DIRECT_PAY"
+    
+    return render_template_string("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Pay to {{ shop.shop_name }}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+            body { font-family: sans-serif; background: #fdfbf7; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+            .pay-box { background: white; padding: 30px; border-radius: 12px; width: 350px; text-align: center; border: 1px solid #eaeaea; box-shadow: 0 4px 15px rgba(0,0,0,0.02); }
+            h2 { margin-top: 0; color: #111; }
+            .amount { font-size: 28px; font-weight: bold; color: #27ae60; margin: 15px 0; }
+            .btn { background: #d35400; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; width: 100%; text-decoration: none; display: inline-block; margin-top: 15px; }
+        </style>
+    </head>
+    <body>
+        <div class="pay-box">
+            <h2>{{ shop.shop_name }}</h2>
+            <p style="color: #666; font-size: 13px; margin:0;">Order ID: {{ o_id }}</p>
+            <div class="amount">₹{{ amount }}</div>
+            <p style="font-size: 13px; color: #444;">Pay using any UPI app to:</p>
+            <p style="font-family: monospace; font-weight: bold; background: #f4f4f4; padding: 8px; border-radius: 6px;">{{ shop.get('upi_id', 'Not Set') }}</p>
+            <a href="upi://pay?pa={{ shop.get('upi_id') }}&pn={{ shop.shop_name }}&am={{ amount }}&cu=INR" class="btn">Pay Now via UPI App</a>
+        </div>
+    </body>
+    </html>
+    """, shop=shop, amount=amount, o_id=o_id)
 
 # --- API ENDPOINTS ---
 @app.route("/api/create_order.php")
@@ -396,16 +427,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✨ Welcome to FamPay Gateway Bot!", reply_markup=InlineKeyboardMarkup(keyboard))
 
 def run_telegram_bot():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    async def main():
-        app_bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-        app_bot.add_handler(CommandHandler("start", start))
-        await app_bot.initialize()
-        await app_bot.start()
-        await app_bot.updater.start_polling(drop_pending_updates=True)
-        await asyncio.Event().wait()
-    loop.run_until_complete(main())
+    try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        async def main():
+            app_bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+            app_bot.add_handler(CommandHandler("start", start))
+            await app_bot.initialize()
+            await app_bot.start()
+            await app_bot.updater.start_polling(drop_pending_updates=True)
+            await asyncio.Event().wait()
+        loop.run_until_complete(main())
+    except Exception as e:
+        print(f"Telegram Bot Error: {e}")
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_telegram_bot)
