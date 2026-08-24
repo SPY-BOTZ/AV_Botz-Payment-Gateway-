@@ -222,13 +222,17 @@ def dashboard():
     if not shop: return redirect(url_for("logout"))
     orders_count = orders_collection.count_documents({"shop_name": shop["shop_name"]})
     
+    warning_banner = ""
+    if not shop.get('upi_id') or not shop.get('gmail'):
+        warning_banner = """
+        <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; display:flex; justify-content:space-between; align-items:center;">
+            <span>⚠️ Payment Setup is incomplete — please add your UPI ID and Gmail in "Payment Setup".</span>
+            <a href="/dashboard/payment-setup" style="color: #856404; font-weight:bold; text-decoration:underline;">Complete it now →</a>
+        </div>
+        """
+
     body = f"""
-    {% if not shop.get('upi_id') or not shop.get('gmail') %}
-    <div style="background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; font-size: 13px; display:flex; justify-content:space-between; align-items:center;">
-        <span>⚠️ Payment Setup is incomplete — please add your UPI ID and Gmail in "Payment Setup".</span>
-        <a href="/dashboard/payment-setup" style="color: #856404; font-weight:bold; text-decoration:underline;">Complete it now →</a>
-    </div>
-    {% endif %}
+    {warning_banner}
     <h2 style="margin-top:0; font-size: 22px; font-weight: 800;">Overview</h2>
     <div class="grid-stats">
         <div class="stat-card"><div><p>Today's Orders</p><h3>{orders_count}</h3></div></div>
@@ -473,11 +477,13 @@ def run_telegram_bot():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         async def main():
+            # Thoda wait karein taaki purana instance puri tarah disconnect ho jaye
+            await asyncio.sleep(3)
             app_bot = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
             app_bot.add_handler(CommandHandler("start", start))
             await app_bot.initialize()
             await app_bot.start()
-            # drop_pending_updates=True se purane conflicts clear ho jayenge
+            # drop_pending_updates=True se purane conflicts ignore ho jayenge
             await app_bot.updater.start_polling(drop_pending_updates=True)
             await asyncio.Event().wait()
         loop.run_until_complete(main())
