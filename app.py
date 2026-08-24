@@ -177,10 +177,9 @@ def signup():
 def login():
     if request.method == "POST":
         try:
-            login_id = request.form.get("mobile") # Yeh mobile ya gmail dono ho sakta hai
+            login_id = request.form.get("mobile")
             password = request.form.get("password")
             
-            # Mobile ya Gmail dono me se kisi se bhi match kar lo
             user = users_collection.find_one({
                 "$or": [{"mobile": login_id}, {"gmail": login_id}],
                 "password": password
@@ -478,11 +477,12 @@ def run_telegram_bot():
             app_bot.add_handler(CommandHandler("start", start))
             await app_bot.initialize()
             await app_bot.start()
+            # drop_pending_updates=True se purane conflicts clear ho jayenge
             await app_bot.updater.start_polling(drop_pending_updates=True)
             await asyncio.Event().wait()
         loop.run_until_complete(main())
     except Exception as e:
-        print(f"Telegram Bot Notice: Token issue or network restriction bypassed ({e})")
+        print(f"Telegram Bot Notice: {e}")
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_telegram_bot)
